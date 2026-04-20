@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MSLO Invoice System</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #f4f6f8;
+      padding: 20px;
+    }
+
+    h2 {
+      margin-bottom: 10px;
+    }
+
+    .form {
+      background: white;
+      padding: 20px;
+      max-width: 500px;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border: none;
+      border-radius: 6px;
+      background: #4e79a7;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #3a5f85;
+    }
+
+    #invoice {
+      display: none;
+      width: 210mm;
+      min-height: 297mm;
+      background: white;
+      padding: 20mm;
+      margin-top: 30px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .logo img {
+      width: 220px;
+    }
+
+    .invoice-title {
+      font-size: 32px;
+      font-weight: bold;
+      text-align: right;
+    }
+
+    .company-right {
+      text-align: right;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .divider {
+      border-top: 1px solid #ddd;
+      margin: 20px 0;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th {
+      background: #4e79a7;
+      color: white;
+      padding: 10px;
+      text-align: left;
+    }
+
+    td {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .totals {
+      margin-top: 20px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .totals-box {
+      width: 250px;
+    }
+
+    .totals-box div {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 5px;
+    }
+
+    @media print {
+      body { background: white; }
+      .form, h2 { display: none; }
+      #invoice { display: block; }
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>Invoice Generator</h2>
+
+<div class="form">
+
+  <label>Client</label>
+  <select id="clientSelect"></select>
+  <input id="newClient" placeholder="Add new client">
+  <button onclick="addClient()">Add Client</button>
+
+  <label>Ship To</label>
+  <input id="ship">
+
+  <label>Invoice Number</label>
+  <input id="num">
+
+  <label>Date</label>
+  <input id="date" type="date">
+
+  <h3>Stock</h3>
+  <input id="stockName" placeholder="Item name">
+  <input id="stockPrice" placeholder="Price">
+  <button onclick="addStock()">Add Stock Item</button>
+
+  <h3>Invoice Lines</h3>
+  <div id="items"></div>
+  <button onclick="addItem()">+ Add Line</button>
+
+  <button onclick="generate()">Generate Invoice</button>
+  <button onclick="printInvoice()">Save as PDF</button>
+
+</div>
+
+<div id="invoice">
+
+  <div class="header">
+    <div class="logo">
+      <img src="logo.png" onerror="this.style.display='none'">
+    </div>
+
+    <div>
+      <div class="invoice-title">INVOICE</div>
+
+      <div class="company-right">
+        <b>MSLO</b><br>
+        Johannesburg, South Africa<br><br>
+        0824141101<br>
+        www.mslo.co.za
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="info-row">
+    <div>
+      <b>BILL TO</b><br>
+      <span id="outClient"></span>
+    </div>
+
+    <div>
+      <b>SHIP TO</b><br>
+      <span id="outShip"></span>
+    </div>
+
+    <div style="text-align:right;">
+      <b>Invoice #:</b> <span id="outNum"></span><br>
+      <b>Date:</b> <span id="outDate"></span><br>
+      <b>Total:</b> R<span id="topTotal"></span>
+    </div>
+  </div>
+
+  <table id="table"></table>
+
+  <div class="totals">
+    <div class="totals-box">
+      <div><b>Total:</b> R<span id="bottomTotal"></span></div>
+      <div><b>Amount Due:</b> R<span id="bottomTotal2"></span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+
+// 🔴 PUT YOUR REAL VALUES HERE
+const supabaseClient = supabase.createClient(
+  "https://YOUR-PROJECT-ID.supabase.co",
+  "YOUR_PUBLISHABLE_KEY"
+);
+
+// CLIENTS
+async function loadClients() {
+  const { data } = await supabaseClient.from("clients").select("*");
+
+  clientSelect.innerHTML = "";
+
+  data.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.name;
+    opt.textContent = c.name;
+    clientSelect.appendChild(opt);
+  });
+}
+
+async function addClient() {
+  const name = newClient.value;
+  if (!name) return;
+
+  const { data, error } = await supabaseClient
+    .from("clients")
+    .insert([{ name }]);
+
+  console.log("DATA:", data);
+  console.log("ERROR:", error);
+
+  if (error) {
+    alert("Error: " + error.message);
+    return;
+  }
+
+  newClient.value = "";
+  loadClients();
+}
+
+// STOCK
+let stockData = [];
+
+async function loadStock() {
+  const { data } = await supabaseClient.from("stock").select("*");
+  stockData = data;
+}
+
+async function addStock() {
+  const name = stockName.value;
+  const price = parseFloat(stockPrice.value);
+
+  if (!name || !price) return;
+
+  await supabaseClient.from("stock").insert([{ name, price }]);
+
+  stockName.value = "";
+  stockPrice.value = "";
+  loadStock();
+}
+
+// ITEMS
+let count = 0;
+
+function addItem() {
+  const div = document.createElement("div");
+
+  div.innerHTML = `
+    <b>Line ${count + 1}</b>
+    <select id="item${count}" onchange="autoPrice(${count})"></select>
+    <input id="qty${count}" type="number" placeholder="Qty">
+    <input id="price${count}" type="number" placeholder="Price">
+  `;
+
+  items.appendChild(div);
+
+  const select = document.getElementById(`item${count}`);
+  stockData.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.name;
+    opt.textContent = s.name;
+    select.appendChild(opt);
+  });
+
+  count++;
+}
+
+function autoPrice(i) {
+  const name = document.getElementById(`item${i}`).value;
+  const item = stockData.find(s => s.name === name);
+  if (item) document.getElementById(`price${i}`).value = item.price;
+}
+
+// GENERATE
+function generate() {
+
+  invoice.style.display = "block";
+
+  outClient.innerText = clientSelect.value;
+  outShip.innerText = ship.value;
+  outNum.innerText = num.value;
+  outDate.innerText = new Date(date.value).toLocaleDateString();
+
+  table.innerHTML = `
+    <tr>
+      <th>Items</th>
+      <th>Qty</th>
+      <th>Price</th>
+      <th>Amount</th>
+    </tr>
+  `;
+
+  let total = 0;
+
+  for (let i = 0; i < count; i++) {
+    const desc = document.getElementById(`item${i}`).value;
+    const qty = +document.getElementById(`qty${i}`).value || 0;
+    const price = +document.getElementById(`price${i}`).value || 0;
+
+    const amount = qty * price;
+    total += amount;
+
+    table.innerHTML += `
+      <tr>
+        <td>${desc}</td>
+        <td>${qty}</td>
+        <td>R${price.toLocaleString()}</td>
+        <td>R${amount.toLocaleString()}</td>
+      </tr>
+    `;
+  }
+
+  topTotal.innerText = total.toLocaleString();
+  bottomTotal.innerText = total.toLocaleString();
+  bottomTotal2.innerText = total.toLocaleString();
+}
+
+// PRINT
+function printInvoice() {
+  generate();
+  document.querySelector(".form").style.display = "none";
+  window.print();
+  document.querySelector(".form").style.display = "block";
+}
+
+// INIT
+loadClients();
+loadStock();
+addItem();
+
+</script>
+
+</body>
+</html>
